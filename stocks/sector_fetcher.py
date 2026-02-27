@@ -48,41 +48,69 @@ def get_all_sectors():
         return []
 
 def get_sector_stocks(sector_name="Banking"):
-    """Fetches stock names and details for a given sector from Groww frontend."""
-    url = f"https://groww.in/stocks/filter?sectors={sector_name}"
-    logger.debug(f"Fetching {url}...")
-    r = requests.get(url, headers=headers)
+    """Fetches comprehensive stock names and details for a given sector from Groww internal backend API."""
+    logger.debug(f"Fetching all stocks for sector {sector_name}...")
     
-    if r.status_code != 200:
-        logger.error(f"Failed to fetch page: {r.status_code}")
+    # First, get the mapping of Sector -> Industry IDs safely from hydration state
+    url_filter = "https://groww.in/stocks/filter"
+    r1 = requests.get(url_filter, headers=headers)
+    if r1.status_code != 200:
+        logger.error(f"Failed to fetch sectors page for mapping: {r1.status_code}")
         return []
-
-    soup = BeautifulSoup(r.text, 'html.parser')
+        
+    soup = BeautifulSoup(r1.text, 'html.parser')
     script_tag = soup.find('script', id='__NEXT_DATA__')
     
-    if not script_tag:
-         logger.warning("No __NEXT_DATA__ found on stock sector page.")
-         return []
-
-    data = json.loads(script_tag.string)
-    page_props = data.get('props', {}).get('pageProps', {})
-    screener_data = page_props.get('screenerData', {})
+    banking_ids = []
+    if script_tag:
+        try:
+            data = json.loads(script_tag.string)
+            industries = data.get('props', {}).get('pageProps', {}).get('ssrDefaultFilters', {}).get('filterData', {}).get('INDUSTRY', [])
+            for ind in industries:
+                if ind.get('sector', '').lower() == sector_name.lower():
+                    banking_ids = list(ind.get('industries', {}).keys())
+                    break
+        except Exception as e:
+            logger.error(f"Failed to parse sector mapping: {e}")
+            
+    if not banking_ids:
+        logger.warning(f"Could not map sector '{sector_name}' to any industry IDs.")
+        return []
+        
+    # Query the internal API unpaginated
+    url_api = "https://groww.in/v1/api/stocks_data/v1/all_stocks"
+    api_headers = {
+        "User-Agent": headers["User-Agent"],
+        "Content-Type": "application/json"
+    }
+    payload = {
+      "listFilters": {
+        "INDUSTRY": banking_ids,
+        "INDEX": []
+      },
+      "objFilters": {
+        "CLOSE_PRICE": {"max": 100000, "min": 0},
+        "MARKET_CAP": {"min": 0, "max": 3000000000000000}
+      },
+      "page": "0",
+      "size": "500",  # Safely bypass the standard 15/20 limit visually enforced via React
+      "sortBy": "NA",
+      "sortType": "ASC"
+    }
     
-    if isinstance(screener_data, dict):
-        if 'records' in screener_data:
-            records = screener_data['records']
-            logger.info(f"Successfully found {len(records)} stocks for sector {sector_name}")
-            return records
-        elif 'content' in screener_data:
-            records = screener_data['content']
-            logger.info(f"Successfully found {len(records)} stocks in 'content' for sector {sector_name}")
-            return records
-        else:
-             logger.debug(f"screenerData keys: {screener_data.keys()}")
-             for k,v in screener_data.items():
-                 if isinstance(v, list) and len(v) > 0 and isinstance(v[0], dict):
-                     return v
-    return []
+    r2 = requests.post(url_api, headers=api_headers, json=payload)
+    if r2.status_code != 200:
+        logger.error(f"Internal structure API failure: {r2.status_code}")
+        return []
+        
+    try:
+        resp = r2.json()
+        records = resp.get('records', [])
+        logger.info(f"Successfully fetched {len(records)} unpaginated records for sector {sector_name}")
+        return records
+    except Exception as e:
+        logger.error(f"Failed to parse internal JSON stocks: {e}")
+        return []
 
 if __name__ == "__main__":
     banking_stocks = get_sector_stocks("Banking")
