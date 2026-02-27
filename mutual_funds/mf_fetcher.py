@@ -16,6 +16,8 @@ headers = {
 def get_sector_mfs(category="Equity"):
     """Fetches mutual fund names and details for a given category from Groww backend unpaginated API."""
     url = "https://groww.in/v1/api/search/v1/derived/scheme"
+    
+    # Try primary "category" first
     params = {
         "available_for_investment": "true",
         "category": category,
@@ -32,7 +34,22 @@ def get_sector_mfs(category="Equity"):
     try:
         resp = r.json()
         content = resp.get('content', [])
-        logger.info(f"Successfully fetched {len(content)} predefined MF records for category {category}")
+        
+        # If no results found, try "sub_category" for granular filters like "Large Cap" or "Liquid"
+        if len(content) == 0:
+            logger.debug(f"No results for primary category '{category}'. Retrying as sub_category...")
+            fallback_params = {
+                "available_for_investment": "true",
+                "sub_category": category,
+                "page": "0",
+                "size": "500"
+            }
+            r_fallback = requests.get(url, headers=headers, params=fallback_params)
+            if r_fallback.status_code == 200:
+                resp_fallback = r_fallback.json()
+                content = resp_fallback.get('content', [])
+                
+        logger.info(f"Successfully fetched {len(content)} predefined MF records for term {category}")
         return content
     except Exception as e:
         logger.error(f"Failed to parse internal MF JSON: {e}")
