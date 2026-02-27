@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
-from stocks.router import router as stocks_router
-from mutual_funds.router import router as mf_router
-from logger import get_logger
+from api.routers.stocks import router as stocks_router
+from api.routers.mutual_funds import router as mf_router
+from core.logger import get_logger
 
 logger = get_logger("groww_api")
 logger.info("Initializing Groww Data API Application")

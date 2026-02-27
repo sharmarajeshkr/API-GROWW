@@ -1,6 +1,9 @@
 import os
+import asyncio
 from dotenv import load_dotenv
 from growwapi import GrowwAPI
+from services.stock_scraper import get_sector_stocks
+from services.mf_scraper import get_sector_mfs  
 
 load_dotenv()
 
@@ -12,7 +15,7 @@ if not api_key or not api_secret:
     print("Error: API_KEY or API_SECRET not found in environment.")
     exit(1)
 
-def main():
+async def main():
     try:
         print("Authenticating with Groww API...")
         # Step 1: Generate an access token using API key and secret
@@ -31,8 +34,8 @@ def main():
         print(profile)
         
         print("\n--- 1. Fetching Stocks in the 'Banking' Sector ---")
-        from sector_fetcher import get_sector_stocks
-        banking_stocks = get_sector_stocks("Banking")
+        
+        banking_stocks = await get_sector_stocks("Banking")
         if banking_stocks:
             print(f"Total Banking Stocks Found: {len(banking_stocks)}")
             print("Top 3 Banking Stocks:")
@@ -40,8 +43,8 @@ def main():
                 print(f"  - {stock.get('companyName')} (Symbol: {stock.get('searchId')}) | Close Price: Rs. {stock.get('closePrice')}")
                 
         print("\n--- 2. Fetching Mutual Funds in the 'Equity' Category ---")
-        from mf_fetcher import get_sector_mfs
-        equity_mfs = get_sector_mfs("Equity")
+        
+        equity_mfs = await get_sector_mfs("Equity")
         if equity_mfs:
             print(f"Total Equity Mutual Funds Found: {len(equity_mfs)}")
             print("Top 3 Equity Mutual Funds:")
@@ -55,4 +58,4 @@ def main():
         print(f"An error occurred: {e}")
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
