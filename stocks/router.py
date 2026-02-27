@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 import os
 from dotenv import load_dotenv
 from growwapi import GrowwAPI
-from .sector_fetcher import get_sector_stocks
+from .sector_fetcher import get_sector_stocks, get_all_sectors
 import sys
 import os
 
@@ -28,13 +28,14 @@ if api_key and api_secret:
     except Exception as e:
         logger.warning(f"Could not initialize official Groww SDK: {e}")
 
-POPULAR_STOCK_SECTORS = ["Banking", "IT", "Automobile", "Pharma", "FMCG", "Metals"]
-
 @router.get("/sectors")
 def list_stock_sectors():
-    """List all available predefined Stock sectors."""
-    logger.info("Fetching stock sectors")
-    return {"sectors": POPULAR_STOCK_SECTORS}
+    """List all available Stock sectors directly fetched from Groww."""
+    logger.info("Fetching all stock sectors dynamically")
+    sectors = get_all_sectors()
+    if not sectors:
+        raise HTTPException(status_code=500, detail="Failed to fetch stock sectors from Groww")
+    return {"count": len(sectors), "sectors": sectors}
 
 @router.get("/sector/{sector_name}")
 def get_stocks_in_sector(sector_name: str):

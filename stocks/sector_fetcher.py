@@ -14,6 +14,39 @@ headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 }
 
+def get_all_sectors():
+    """Fetches the comprehensive list of all stock sectors available on Groww."""
+    url = "https://groww.in/stocks/filter"
+    logger.debug(f"Fetching all sectors from {url}...")
+    r = requests.get(url, headers=headers)
+    
+    if r.status_code != 200:
+        logger.error(f"Failed to fetch sectors page: {r.status_code}")
+        return []
+
+    soup = BeautifulSoup(r.text, 'html.parser')
+    script_tag = soup.find('script', id='__NEXT_DATA__')
+    
+    if not script_tag:
+         logger.warning("No __NEXT_DATA__ found on stock sector page.")
+         return []
+
+    try:
+        data = json.loads(script_tag.string)
+        props = data.get('props', {}).get('pageProps', {})
+        industries = props.get('ssrDefaultFilters', {}).get('filterData', {}).get('INDUSTRY', [])
+        
+        sectors = []
+        for ind in industries:
+            if 'sector' in ind:
+                sectors.append(ind['sector'])
+                
+        logger.info(f"Successfully dynamically fetched {len(sectors)} stock sectors")
+        return sectors
+    except Exception as e:
+        logger.error(f"Failed to parse sector list: {e}")
+        return []
+
 def get_sector_stocks(sector_name="Banking"):
     """Fetches stock names and details for a given sector from Groww frontend."""
     url = f"https://groww.in/stocks/filter?sectors={sector_name}"
