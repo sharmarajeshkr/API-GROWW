@@ -39,10 +39,16 @@ def test_get_individual_stock():
     assert response.status_code == 200
     data = response.json()
     assert data["symbol"] == "RELIANCE"
-    assert "details" in data
-    details = data["details"]
+    assert "live_quote" in data
+    assert "comprehensive_details" in data
+    details = data["live_quote"]
     # Check for keys returned by the official API
     assert "day_change" in details or "market_cap" in details or "upper_circuit_limit" in details
+    
+    # Check for rich stats injected by the scraper
+    rich = data["comprehensive_details"]
+    assert "overview_stats" in rich
+    assert "financials" in rich
 
 def test_list_mf_categories():
     """Verify that we can retrieve the static list of mutual fund categories."""
@@ -73,6 +79,11 @@ def test_get_individual_mf():
     assert response.status_code == 200
     data = response.json()
     assert data["search_id"] == test_id
-    assert "details" in data
-    # Ensure details is not just a key dump anymore
-    assert "scheme_name" in data["details"] or "fund_name" in data["details"] or "amc_info" in data["details"] or "stp_details" in data["details"]
+    assert "basic_details" in data
+    assert "comprehensive_details" in data
+    
+    # Check for rich elements injected by the scraper
+    rich = data["comprehensive_details"]
+    assert "returns" in rich
+    assert "fund_manager" in rich
+    assert "holdings" in rich

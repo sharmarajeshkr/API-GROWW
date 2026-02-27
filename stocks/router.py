@@ -5,6 +5,9 @@ from growwapi import GrowwAPI
 from .sector_fetcher import get_sector_stocks, get_all_sectors
 import sys
 import os
+import requests
+from bs4 import BeautifulSoup
+import json
 
 # Appending root directory to path to import logger
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -57,13 +60,42 @@ def get_individual_stock(trading_symbol: str):
          logger.error("Groww API client not initialized.")
          raise HTTPException(status_code=500, detail="Groww API client not initialized.")
     try:
+         # 1. Fetch Official Quote
          quote = groww_client.get_quote(
              trading_symbol=trading_symbol.upper(),
              exchange=GrowwAPI.EXCHANGE_NSE,
              segment=GrowwAPI.SEGMENT_CASH
          )
-         logger.info(f"Successfully fetched quote for {trading_symbol}")
-         return {"symbol": trading_symbol.upper(), "details": quote}
+         
+         # 2. Fetch Comprehensive Rich Data via Scrape
+         rich_data = {}
+         scrape_url = f"https://groww.in/stocks/{trading_symbol.lower()}"
+         r = requests.get(scrape_url, headers={"User-Agent": "Mozilla/5.0"})
+         if r.status_code == 200:
+             soup = BeautifulSoup(r.text, 'html.parser')
+             script_tag = soup.find('script', id='__NEXT_DATA__')
+             if script_tag:
+                 data = json.loads(script_tag.string)
+                 stock_data = data.get('props', {}).get('pageProps', {}).get('stockData', {})
+                 
+                 rich_data = {
+                     "overview_stats": stock_data.get('stats', {}),
+                     "fundamentals": stock_data.get('fundamentals', {}),
+                     "financials": stock_data.get('financialStatementV2', []),
+                     "shareholding": stock_data.get('shareHoldingPattern', {}),
+                     "similar_assets": stock_data.get('similarAssets', [])
+                 }
+                 
+                 # Enforce dict casting to prevent json serialization type errors
+                 if not isinstance(rich_data["fundamentals"], dict):
+                      rich_data["fundamentals"] = {}
+                 
+         logger.info(f"Successfully fetched unified quote & rich data for {trading_symbol}")
+         return {
+             "symbol": trading_symbol.upper(),
+             "live_quote": quote,
+             "comprehensive_details": rich_data
+         }
     except Exception as e:
          logger.error(f"Failed to fetch {trading_symbol}: {str(e)}")
          raise HTTPException(status_code=400, detail=f"Failed to fetch {trading_symbol}: {str(e)}")

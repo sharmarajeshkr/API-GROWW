@@ -56,11 +56,23 @@ def get_individual_mf(search_id: str):
     data = json.loads(script_tag.string)
     page_props = data.get('props', {}).get('pageProps', {})
     
-    # Groww stores MF data here
+    # Groww stores MF data in mfServerSideData
     mf_info = page_props.get('mfServerSideData', {})
     if not mf_info:
-        logger.warning(f"Could not find mfServerSideData for {search_id}. Returning raw props keys.")
+        logger.warning(f"Could not find rich 'mfServerSideData' data for {search_id}. Returning raw props keys.")
         return {"raw_props_keys": list(page_props.keys())}
         
-    logger.info(f"Successfully fetched details for mutual fund {search_id}")
-    return {"search_id": search_id, "details": mf_info}
+    rich_data = {
+         "returns": mf_info.get("return_stats", []),
+         "holdings": mf_info.get("holdings", []),
+         "fund_manager": mf_info.get("other_details", {}).get("fund_manager", "Unknown"),
+         "pros_cons": mf_info.get("pros_cons", {}),
+         "amc_info": mf_info.get("amc", {})
+    }
+        
+    logger.info(f"Successfully fetched deep comprehensive details for mutual fund {search_id}")
+    return {
+        "search_id": search_id, 
+        "basic_details": mf_info.get('search_option', {}),
+        "comprehensive_details": rich_data
+    }
