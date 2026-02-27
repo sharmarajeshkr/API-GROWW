@@ -16,25 +16,53 @@ logger = get_logger("mutual_funds_router")
 
 router = APIRouter(prefix="/api/mutual-funds", tags=["mutual-funds"])
 
-POPULAR_MF_CATEGORIES = ["Equity", "Debt", "Hybrid", "Index Funds"]
+from core.database import AsyncSessionLocal
+from core.models import MFCategory, MutualFund
+from sqlalchemy.future import select
 
 @router.get("/categories", response_model=MFCategoryListResponse)
 async def list_mf_categories():
-    """List all available predefined Mutual Fund categories."""
-    logger.info("Fetching mutual fund categories")
-    return {"categories": POPULAR_MF_CATEGORIES}
+    """List all available predefined Mutual Fund categories dynamically from Database."""
+    logger.info("Fetching mutual fund categories from Database")
+    async with AsyncSessionLocal() as session:
+        stmt = select(MFCategory.name)
+        res = await session.execute(stmt)
+        categories = res.scalars().all()
+        
+    return {"categories": list(categories) if categories else []}
 
 @router.get("/category/{category_name}", response_model=MFListResponse)
 async def get_mfs_in_category(category_name: str):
-    """Get all mutual funds belonging to a specific category with details."""
-    logger.info(f"Fetching mutual funds for category: {category_name}")
-    mfs = await get_sector_mfs(category_name)
-    if not mfs:
-        logger.error(f"No mutual funds found for category: {category_name}")
-        raise HTTPException(status_code=404, detail=f"No mutual funds found for category: {category_name}")
+    """Get all mutual funds belonging to a specific category from Database."""
+    logger.info(f"Fetching mutual funds for category: {category_name} (from DB)")
+    async with AsyncSessionLocal() as session:
+        stmt = select(MFCategory).where(MFCategory.name == category_name)
+        res = await session.execute(stmt)
+        cat_obj = res.scalars().first()
+        
+        if not cat_obj:
+            logger.error(f"Category not found in DB: {category_name}")
+            raise HTTPException(status_code=404, detail=f"No mutual funds found for category: {category_name}")
+            
+        stmt_mfs = select(MutualFund).where(MutualFund.category_id == cat_obj.id)
+        res_mfs = await session.execute(stmt_mfs)
+        db_mfs = res_mfs.scalars().all()
+        
+        # Serialize to match expected Pydantic schema
+        formatted_mfs = []
+        for mf in db_mfs:
+            formatted_mfs.append({
+                "search_id": mf.search_id,
+                "schemeName": mf.scheme_name,
+                "return3y": mf.return_3y,
+                "return5y": mf.return_5y
+            })
     
-    logger.info(f"Successfully retrieved {len(mfs)} mutual funds for category {category_name}")
-    return {"category": category_name, "count": len(mfs), "mutual_funds": mfs}
+    if not formatted_mfs:
+        raise HTTPException(status_code=404, detail=f"No mutual funds found for category: {category_name}")
+        
+    logger.info(f"Successfully retrieved {len(formatted_mfs)} mutual funds for category {category_name}")
+    return {"category": category_name, "count": len(formatted_mfs), "mutual_funds": formatted_mfs}
 
 @router.get("/{search_id}", response_model=MFDetailResponse)
 async def get_individual_mf(search_id: str):

@@ -45,26 +45,55 @@ def get_groww_client():
             
     return _groww_client
 
+from core.database import AsyncSessionLocal
+from core.models import Sector, Stock
+from sqlalchemy.future import select
+
 @router.get("/sectors", response_model=SectorListResponse)
 async def list_stock_sectors():
-    """List all available Stock sectors directly fetched from Groww."""
-    logger.info("Fetching all stock sectors dynamically")
-    sectors = await get_all_sectors()
+    """List all available Stock sectors from the Database."""
+    logger.info("Fetching all stock sectors securely from Database")
+    async with AsyncSessionLocal() as session:
+        stmt = select(Sector.name)
+        result = await session.execute(stmt)
+        sectors = result.scalars().all()
+        
     if not sectors:
-        raise HTTPException(status_code=500, detail="Failed to fetch stock sectors from Groww")
-    return {"count": len(sectors), "sectors": sectors}
+        raise HTTPException(status_code=404, detail="No stock sectors found in Database")
+    return {"count": len(sectors), "sectors": list(sectors)}
 
 @router.get("/sector/{sector_name}", response_model=StockListResponse)
 async def get_stocks_in_sector(sector_name: str):
-    """Get all stocks belonging to a specific sector with details."""
-    logger.info(f"Fetching stocks for sector: {sector_name}")
-    stocks = await get_sector_stocks(sector_name)
-    if not stocks:
-        logger.error(f"No stocks found for sector: {sector_name}")
-        raise HTTPException(status_code=404, detail=f"No stocks found for sector: {sector_name}")
+    """Get all stocks belonging to a specific sector directly from Postgres."""
+    logger.info(f"Fetching stocks for sector from DB: {sector_name}")
+    async with AsyncSessionLocal() as session:
+        stmt = select(Sector).where(Sector.name == sector_name)
+        res = await session.execute(stmt)
+        sector_obj = res.scalars().first()
+        
+        if not sector_obj:
+            logger.error(f"Sector not found in DB: {sector_name}")
+            raise HTTPException(status_code=404, detail=f"No such sector found: {sector_name}")
+            
+        stmt_stocks = select(Stock).where(Stock.sector_id == sector_obj.id)
+        res_stocks = await session.execute(stmt_stocks)
+        db_stocks = res_stocks.scalars().all()
+        
+        # Serialize format to match previously expected Pydantic schema
+        formatted_stocks = []
+        for s in db_stocks:
+            formatted_stocks.append({
+                "searchId": s.symbol,
+                "companyName": s.company_name,
+                "closePrice": s.close_price,
+                "marketCap": s.market_cap
+            })
+            
+    if not formatted_stocks:
+        raise HTTPException(status_code=404, detail=f"No stocks associated with sector: {sector_name}")
     
-    logger.info(f"Successfully retrieved {len(stocks)} stocks for sector {sector_name}")
-    return {"sector": sector_name, "count": len(stocks), "stocks": stocks}
+    logger.info(f"Successfully retrieved {len(formatted_stocks)} stocks from DB for {sector_name}")
+    return {"sector": sector_name, "count": len(formatted_stocks), "stocks": formatted_stocks}
 
 @router.get("/{trading_symbol}", response_model=StockDetailResponse)
 async def get_individual_stock(trading_symbol: str, client: GrowwAPI = Depends(get_groww_client)):
