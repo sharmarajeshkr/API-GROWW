@@ -24,7 +24,7 @@ call venv\Scripts\activate.bat
 echo Starting Uvicorn on port 8000. Press Ctrl+C to stop the server...
 
 REM Launch a background job to poll the server and open the browser once it's up
-start /b cmd /c "for /l %%x in (1, 1, 30) do (curl -s -f -o nul http://127.0.0.1:8000/docs ^&^& (start http://127.0.0.1:8000/docs ^& exit) || timeout /t 1 >nul)"
+start /b cmd /c "for /l %%x in (1, 1, 30) do (curl -s -f -o nul http://127.0.0.1:8000/docs >nul 2>&1 ^&^& (start http://127.0.0.1:8000/docs ^& exit) || timeout /t 1 >nul 2>&1)"
 
 REM Run Uvicorn in the foreground
 python -m uvicorn main_api:app --host 127.0.0.1 --port 8000 --reload
